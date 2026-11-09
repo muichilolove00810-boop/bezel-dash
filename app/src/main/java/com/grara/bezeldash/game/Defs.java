@@ -17,7 +17,7 @@ public final class Defs {
     };
 
     // ---- 속도 (블록/초) ----
-    public static final float[] SPEEDS = {7.0f, 9.0f, 11.0f, 13.5f};
+    public static final float[] SPEEDS = {5.5f, 7.0f, 8.6f, 10.5f};
     // ---- 크기 ----
     public static final float[] SIZES = {0.6f, 1.0f, 1.4f};
     public static final float[] SIZE_JUMP = {0.82f, 1.0f, 1.06f};

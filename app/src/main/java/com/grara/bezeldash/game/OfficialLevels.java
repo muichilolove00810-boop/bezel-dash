@@ -8,8 +8,10 @@ public final class OfficialLevels {
     }
 
     public static final String[] NAMES = {"첫걸음", "네온 제트", "거꾸로 세상", "지그재그 폭풍", "베젤 엔진",
-            "작은 거인", "거대 제트", "반전 미니", "최종 폭주"};
-    public static final String[] DIFF = {"쉬움", "보통", "보통", "어려움", "보통", "보통", "보통", "어려움", "지옥"};
+            "작은 거인", "거대 제트", "반전 미니", "최종 폭주",
+            "트리거 쇼", "별빛 계단", "스텝 리듬", "중력 미로", "베젤 마스터"};
+    public static final String[] DIFF = {"쉬움", "보통", "보통", "어려움", "보통", "보통", "보통", "어려움", "지옥",
+            "쉬움", "보통", "보통", "어려움", "어려움"};
 
     public static Level get(int i) {
         Level l;
@@ -22,7 +24,12 @@ public final class OfficialLevels {
             case 5: l = giant(); break;
             case 6: l = bigJet(); break;
             case 7: l = flipMini(); break;
-            default: l = finale();
+            case 8: l = finale(); break;
+            case 9: l = triggerShow(); break;
+            case 10: l = stairs(); break;
+            case 11: l = stepRhythm(); break;
+            case 12: l = gravMaze(); break;
+            default: l = bezelMaster();
         }
         l.name = NAMES[i];
         l.official = true;
@@ -79,7 +86,7 @@ public final class OfficialLevels {
         l.add(SMALL_SPIKE, 58, 0);
         trig(l, T_FLASH, 62, 6, 3);
         l.add(PAD, 64, 0);
-        spikes(l, 66, 3);
+        spikes(l, 66, 2);
         trig(l, T_BG, 72, 6, 10);
         spikes(l, 76, 1);
         l.add(SMALL_SPIKE, 81, 0);
@@ -320,6 +327,156 @@ public final class OfficialLevels {
         spikes(l, 172, 1);
         spikes(l, 182, 2);
         trig(l, T_FLASH, 190, 0, 5);
+        return l;
+    }
+
+    // ---------- 10. 트리거 쇼 (트리거로 길이 열리고 닫힘) ----------
+    private static Level triggerShow() {
+        Level l = new Level();
+        l.style = 7; l.bpm = 120; l.seed = 1010; l.bg = 0;
+        // 벽(그룹 1)이 이동 트리거로 위로 비켜남
+        trig(l, T_MOVE, 14, 1, 0, 8, 10, 2);
+        for (int j = 0; j < 3; j++) { Level.Obj o = l.add(BLOCK, 26, j); o.group = 1; }
+        trig(l, T_BG, 14, 1, 8);
+        spikes(l, 32, 1);
+        // 숨겨진 다리(그룹 2)가 켜기 트리거로 나타남
+        for (int i = 0; i < 6; i++) { Level.Obj o = l.add(BLOCK, 40 + i, 0); o.group = 2; o.hidden = true; }
+        trig(l, T_TOGGLE, 34, 2, 1);
+        trig(l, T_FLASH, 34, 6, 3);
+        spikes(l, 40, 6);
+        // 회전하는 장식 + 투명해지는 장식
+        for (int i = 0; i < 5; i++) deco(l, 50 + i * 3, 5, 0, 3);
+        trig(l, T_ROTATE, 48, 3, 24, 30);
+        trig(l, T_ALPHA, 60, 3, 0, 15);
+        spikes(l, 54, 1);
+        spikes(l, 62, 1);
+        // 가시 벽(그룹 4)이 내려와 길을 막지만 위를 지나감
+        trig(l, T_SHAKE, 68, 4, 6);
+        trig(l, T_ZOOM, 68, 8, 6);
+        blocks(l, 74, 0, 3, 1);
+        spikes(l, 80, 1);
+        trig(l, T_ZOOM, 84, 10, 6);
+        trig(l, T_BG, 84, 6, 8);
+        spikes(l, 90, 2);
+        trig(l, T_HAPTIC, 98, 6, 1);
+        return l;
+    }
+
+    // ---------- 11. 별빛 계단 ----------
+    private static Level stairs() {
+        Level l = new Level();
+        l.style = 3; l.bpm = 132; l.seed = 1111; l.bg = 1;
+        for (int x = 6; x < 120; x += 7) deco(l, x, 8 + (x % 4), 0, 0);
+        spikes(l, 12, 1);
+        blocks(l, 20, 0, 2, 1);
+        blocks(l, 23, 0, 2, 2);
+        blocks(l, 26, 0, 2, 3);
+        spikes(l, 28, 6);
+        blocks(l, 30, 0, 3, 2);
+        spikes(l, 36, 1);
+        l.add(PAD, 42, 0);
+        blocks(l, 46, 0, 3, 3);
+        l.add(SMALL_SPIKE, 49, 0);
+        l.add(SMALL_SPIKE, 50, 0);
+        spikes(l, 56, 2);
+        l.add(ORB, 57, 2);
+        trig(l, T_FLASH, 62, 1, 3);
+        blocks(l, 66, 0, 1, 1);
+        blocks(l, 69, 0, 1, 2);
+        spikes(l, 70, 3);
+        blocks(l, 73, 0, 2, 2);
+        spikes(l, 80, 1);
+        spikes(l, 86, 2);
+        l.add(PAD, 92, 0);
+        spikes(l, 94, 2);
+        blocks(l, 97, 0, 3, 1);
+        spikes(l, 100, 2);
+        spikes(l, 108, 1);
+        return l;
+    }
+
+    // ---------- 12. 스텝 리듬 ----------
+    private static Level stepRhythm() {
+        Level l = new Level();
+        l.style = 5; l.bpm = 150; l.seed = 1212; l.bg = 4;
+        spikes(l, 10, 1);
+        portal(l, P_MODE, 16, 1, M_STEP);
+        trig(l, T_BG, 16, 4, 6);
+        spikes(l, 24, 4);
+        l.add(SAW, 32, 6);
+        spikes(l, 34, 4);
+        blocks(l, 42, 5, 4, 1);
+        spikes(l, 42, 4);
+        size(l, 50, 0);
+        l.add(SAW, 56, 4);
+        spikes(l, 58, 5);
+        l.add(SAW, 66, 2);
+        size(l, 72, 2);
+        trig(l, T_ZOOM, 72, 8, 6);
+        spikes(l, 78, 3);
+        l.add(SAW, 86, 8);
+        spikes(l, 88, 3);
+        size(l, 96, 1);
+        portal(l, P_MODE, 96, 1, M_JUMP);
+        trig(l, T_ZOOM, 96, 10, 6);
+        spikes(l, 104, 1);
+        spikes(l, 110, 2);
+        return l;
+    }
+
+    // ---------- 13. 중력 미로 ----------
+    private static Level gravMaze() {
+        Level l = new Level();
+        l.style = 6; l.bpm = 140; l.seed = 1313; l.bg = 3;
+        spikes(l, 12, 1);
+        portal(l, P_GRAV, 18, 1, 1);
+        trig(l, T_FLASH, 18, 4, 3);
+        ceilSpikes(l, 26, 1);
+        ceilSpikes(l, 33, 2);
+        // 천장 블록 계단
+        for (int i = 0; i < 3; i++) blocks(l, 40 + i * 3, 13 - i, 2, 1 + i);
+        portal(l, P_GRAV, 52, 8, 0);
+        portal(l, P_GRAV, 52, 4, 0);
+        portal(l, P_GRAV, 52, 1, 0);
+        spikes(l, 60, 2);
+        l.add(G_ORB, 66, 2);
+        for (int i = 0; i < 4; i++) l.add(SPIKE, 66 + i, 0);
+        ceilSpikes(l, 76, 2);
+        portal(l, P_GRAV, 84, 10, 0);
+        portal(l, P_GRAV, 84, 6, 0);
+        trig(l, T_BG, 84, 2, 6);
+        spikes(l, 92, 1);
+        spikes(l, 100, 2);
+        return l;
+    }
+
+    // ---------- 14. 베젤 마스터 ----------
+    private static Level bezelMaster() {
+        Level l = new Level();
+        l.style = 1; l.bpm = 132; l.seed = 1414; l.bg = 6;
+        spikes(l, 10, 1);
+        // 1) 벽 올리기
+        trig(l, T_BEZEL, 14, 1, 2, 50);
+        trig(l, T_HAPTIC, 14, 8, 1);
+        for (int j = 0; j < 3; j++) { Level.Obj o = l.add(BLOCK, 30, j); o.group = 1; }
+        spikes(l, 36, 1);
+        // 2) 제트 + 문 올리기
+        portal(l, P_MODE, 40, 1, M_JET);
+        trig(l, T_BEZEL, 40, 2, 2, 50);
+        trig(l, T_HAPTIC, 40, 8, 1);
+        blocks(l, 50, 0, 2, 4);
+        for (int j = 4; j < 14; j++) { Level.Obj o = l.add(BLOCK, 58, j); o.group = 2; }
+        for (int j = 4; j < 14; j++) { Level.Obj o = l.add(BLOCK, 59, j); o.group = 2; }
+        portal(l, P_MODE, 66, 1, M_JUMP);
+        // 3) 다리 올리기
+        trig(l, T_BEZEL, 68, 3, 2, 50);
+        trig(l, T_HAPTIC, 68, 8, 1);
+        for (int i = 0; i < 8; i++) { Level.Obj o = l.add(BLOCK, 80 + i, -3); o.group = 3; }
+        spikes(l, 80, 8);
+        trig(l, T_ZOOM, 78, 8, 6);
+        trig(l, T_ZOOM, 92, 10, 6);
+        spikes(l, 98, 1);
+        spikes(l, 104, 2);
         return l;
     }
 
