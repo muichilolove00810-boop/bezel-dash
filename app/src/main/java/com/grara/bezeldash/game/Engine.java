@@ -12,7 +12,7 @@ public final class Engine {
     public static final float CEIL = 14f;
 
     // 물리 상수
-    static final float G_JUMP = 88f, V_JUMP = 21.5f, V_PAD = 28f, V_ORB = 20f;
+    static final float G_JUMP = 100f, V_JUMP = 19.5f, V_PAD = 27f, V_ORB = 19f;
     static final float G_FLIP = 70f, G_STEP = 55f, V_STEP = 13f, A_JET = 50f, V_JET = 12f;
     static final float MAX_FALL = 26f;
 
