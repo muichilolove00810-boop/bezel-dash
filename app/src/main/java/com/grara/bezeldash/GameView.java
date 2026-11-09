@@ -1398,7 +1398,8 @@ public class GameView extends View {
         int gc = shade(bgColor, 0.7f);
         p.setColor(gc);
         c.drawRect(0, gy, W, H, p);
-        p.setColor(alpha(shade(bgColor, 0.45f), 255));
+        stroke.setColor(alpha(shade(bgColor, 1.4f), 70));
+        stroke.setStrokeWidth(W * 0.004f);
         float t = vs;
         for (float x = -((vx0 * t) % t); x < W; x += t) c.drawLine(x, gy, x - t * 0.6f, H, stroke);
         stroke.setColor(Color.WHITE);
