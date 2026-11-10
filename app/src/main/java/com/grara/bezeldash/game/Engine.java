@@ -109,6 +109,29 @@ public final class Engine {
         hapticMs = 0;
     }
 
+    /** 에디터 '여기서부터 테스트': x 이전의 포털 효과를 적용하고 그 위치에서 시작. */
+    public void startAt(float x) {
+        if (x <= 0) return;
+        for (int i = 0; i < objs.length; i++) {
+            Level.Obj o = objs[i];
+            if (o.x + 0.5f > x) continue;
+            used[i] = true;
+            switch (o.type) {
+                case Defs.P_MODE: mode = o.param(0); break;
+                case Defs.P_GRAV: grav = o.param(0) == 1 ? -1 : 1; break;
+                case Defs.P_SPEED: speedIdx = o.param(0); break;
+                case Defs.P_SIZE: sizeIdx = Math.max(0, Math.min(2, o.param(0))); break;
+                case Defs.T_BG: bgFrom = bgTo = o.param(0); break;
+                case Defs.T_TOGGLE: gon[Math.max(1, Math.min(99, o.param(0)))] = o.param(1); break;
+                default: break;
+            }
+        }
+        px = x;
+        py = grav == 1 ? half() : CEIL - half();
+        vy = 0;
+        grounded = true;
+    }
+
     public float half() {
         return (mode == Defs.M_ZIG ? 0.25f : 0.4f) * Defs.SIZES[sizeIdx];
     }

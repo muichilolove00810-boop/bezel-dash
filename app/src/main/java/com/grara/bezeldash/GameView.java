@@ -141,8 +141,13 @@ public class GameView extends View {
     }
 
     // ---------------- 에디터 ----------------
-    private static final int T_PLACE = 0, T_SELECT = 1, T_DELETE = 2;
-    private static final String[] TOOL_NAMES = {"배치", "선택", "삭제"};
+    private static final int T_PLACE = 0, T_SELECT = 1, T_DELETE = 2, T_BRUSH = 3;
+    private static final String[] TOOL_NAMES = {"배치", "선택", "삭제", "붓"};
+    private final ArrayList<Level> redo = new ArrayList<>();
+    private final int[] recent = {-1, -1, -1};
+    private boolean edAxisY, dragObj, painting, dragUndoPushed;
+    private int dragGX, dragGY, objGX, objGY, paintGX = Integer.MIN_VALUE, paintGY;
+    private float testStartX;
     private int tool = T_PLACE;
     private int palIdx;
     private Level.Obj selected;
@@ -474,9 +479,11 @@ public class GameView extends View {
             checkpoints.clear();
             if (!practice) {
                 player = new AudioPlayer(song.pcm);
-                player.start();
+                float st = fromEditor ? testStartX / Defs.SPEEDS[level.startSpeed] : 0;
+                player.start(Math.max(0, st));
             }
         }
+        if (fromEditor && testStartX > 0 && (checkpoints.isEmpty() || fresh)) eng.startAt(testStartX);
         sinceCheckpoint = 0;
         acc = 0;
         camX = eng.px - 3.2f;
@@ -672,7 +679,8 @@ public class GameView extends View {
         edCamY = -1;
         tool = T_PLACE;
         screen = S_EDIT;
-        edToast("드래그: 이동 · 베젤: 오브젝트 고르기");
+        redo.clear();
+        edToast("위 이름 탭: 오브젝트 고르기 · 드래그: 화면 이동");
     }
 
     private void edToast(String s) {
@@ -683,15 +691,11 @@ public class GameView extends View {
     private void pushUndo() {
         undo.add(level.copy());
         if (undo.size() > 40) undo.remove(0);
+        redo.clear();
         dirty = true;
     }
 
-    private void doUndo() {
-        if (undo.isEmpty()) {
-            edToast("되돌릴 것이 없어요");
-            return;
-        }
-        Level prev = undo.remove(undo.size() - 1);
+    private void applySnapshot(Level prev) {
         level.objs.clear();
         level.objs.addAll(prev.objs);
         level.style = prev.style;
@@ -703,6 +707,81 @@ public class GameView extends View {
         level.startSize = prev.startSize;
         selected = null;
         dirty = true;
+    }
+
+    private void doRedo() {
+        if (redo.isEmpty()) {
+            edToast("다시 실행할 것이 없어요");
+            return;
+        }
+        undo.add(level.copy());
+        applySnapshot(redo.remove(redo.size() - 1));
+        edToast("다시 실행");
+    }
+
+    private void addRecent(int idx) {
+        if (recent[0] == idx) return;
+        int k = 2;
+        for (int i = 0; i < 3; i++) if (recent[i] == idx) k = i;
+        for (int i = k; i > 0; i--) recent[i] = recent[i - 1];
+        recent[0] = idx;
+    }
+
+    private void openPalette() {
+        menuStack.clear();
+        Menu m = new Menu("오브젝트 고르기");
+        m.accent = Color.rgb(120, 255, 140);
+        for (int i = 0; i < Defs.PALETTE.length; i++) {
+            final int idx = i;
+            int type = Defs.PALETTE[i];
+            m.add(new MItem(Defs.name(type), Defs.help(type), () -> {
+                palIdx = idx;
+                addRecent(idx);
+                if (tool != T_BRUSH) tool = T_PLACE;
+                screen = S_EDIT;
+                edToast(Defs.name(Defs.PALETTE[idx]));
+            }));
+        }
+        m.sel = palIdx;
+        m.pos = palIdx;
+        m.onBack = () -> screen = S_EDIT;
+        showMenu(m);
+    }
+
+    /** 에디터 버튼 위치에 닿았는지 (버튼이면 true) */
+    private boolean edButtonAt(float sx, float sy) {
+        float br = W * 0.085f;
+        if (dist(sx, sy, cx, H * 0.1f) < br * 1.2f) return true;
+        if (dist(sx, sy, W * 0.09f, cy) < br || dist(sx, sy, W * 0.91f, cy) < br) return true;
+        if (dist(sx, sy, cx, H * 0.91f) < br) return true;
+        if ((tool == T_PLACE || tool == T_BRUSH) && Math.abs(sy - H * 0.21f) < W * 0.05f && Math.abs(sx - cx) < W * 0.25f) return true;
+        if ((tool == T_PLACE || tool == T_BRUSH) && Math.abs(sy - H * 0.31f) < W * 0.05f && Math.abs(sx - cx) < W * 0.24f) return true;
+        if (selected != null && tool != T_DELETE && tool != T_BRUSH && Math.abs(sy - H * 0.7f) < W * 0.06f && Math.abs(sx - cx) < W * 0.34f) return true;
+        return false;
+    }
+
+    private void paintAt(int gx, int gy) {
+        if (gy < -3 || gy >= Engine.CEIL || gx < 0) return;
+        if (gx == paintGX && gy == paintGY) return;
+        paintGX = gx;
+        paintGY = gy;
+        int type = Defs.PALETTE[palIdx];
+        Level.Obj hit = objAt(gx, gy);
+        if (hit != null && hit.type == type) return;
+        if (!dragUndoPushed) {
+            pushUndo();
+            dragUndoPushed = true;
+        }
+        level.add(type, gx, gy);
+    }
+
+    private void doUndo() {
+        if (undo.isEmpty()) {
+            edToast("되돌릴 것이 없어요");
+            return;
+        }
+        redo.add(level.copy());
+        applySnapshot(undo.remove(undo.size() - 1));
         edToast("실행 취소");
     }
 
@@ -739,9 +818,48 @@ public class GameView extends View {
         // 버튼들
         float br = W * 0.085f;
         if (dist(sx, sy, cx, H * 0.1f) < br * 1.2f) {
-            tool = (tool + 1) % 3;
-            selected = null;
-            edToast(TOOL_NAMES[tool] + " 모드" + (tool == T_PLACE ? " · 베젤: 오브젝트" : tool == T_SELECT ? " · 베젤: 좌우 이동" : ""));
+            tool = (tool + 1) % 4;
+            if (tool == T_DELETE || tool == T_BRUSH) selected = null;
+            String[] tips = {" · 탭: 놓기 · 베젤: 오브젝트", " · 끌기: 옮기기 · 베젤: 이동", " · 탭: 지우기", " · 끌면서 칠하기"};
+            edToast(TOOL_NAMES[tool] + tips[tool]);
+            return;
+        }
+        // 팔레트 / 최근 오브젝트
+        if ((tool == T_PLACE || tool == T_BRUSH) && Math.abs(sy - H * 0.21f) < W * 0.05f && Math.abs(sx - cx) < W * 0.25f) {
+            openPalette();
+            return;
+        }
+        if ((tool == T_PLACE || tool == T_BRUSH) && Math.abs(sy - H * 0.31f) < W * 0.05f && Math.abs(sx - cx) < W * 0.24f) {
+            int k = sx < cx - W * 0.08f ? 0 : sx > cx + W * 0.08f ? 2 : 1;
+            if (recent[k] >= 0) {
+                palIdx = recent[k];
+                addRecent(palIdx);
+                edToast(Defs.name(Defs.PALETTE[palIdx]));
+            }
+            return;
+        }
+        // 선택 오브젝트 빠른 버튼: 회전 / 복사 / 축 / 삭제
+        if (selected != null && tool != T_DELETE && tool != T_BRUSH && Math.abs(sy - H * 0.7f) < W * 0.06f && Math.abs(sx - cx) < W * 0.34f) {
+            int k = (int) Math.floor((sx - (cx - W * 0.34f)) / (W * 0.17f));
+            k = Math.max(0, Math.min(3, k));
+            if (k == 0) {
+                pushUndo();
+                selected.rot = (selected.rot + 1) % 4;
+            } else if (k == 1) {
+                pushUndo();
+                Level.Obj c2 = selected.copy();
+                c2.x += 1;
+                level.objs.add(c2);
+                selected = c2;
+                edToast("복사 · 끌어서 옮겨요");
+            } else if (k == 2) {
+                edAxisY = !edAxisY;
+                edToast(edAxisY ? "베젤: 위아래 이동" : "베젤: 좌우 이동");
+            } else {
+                pushUndo();
+                level.objs.remove(selected);
+                selected = null;
+            }
             return;
         }
         if (dist(sx, sy, W * 0.09f, cy) < br) {
@@ -750,6 +868,7 @@ public class GameView extends View {
         }
         if (dist(sx, sy, W * 0.91f, cy) < br) {
             saveLevel();
+            testStartX = 0;
             startLevel(level, false, true);
             return;
         }
@@ -768,15 +887,22 @@ public class GameView extends View {
                     return;
                 }
                 pushUndo();
-                int py = Defs.isPortal(type) ? gy : gy;
-                Level.Obj o = level.add(type, gx, py);
+                Level.Obj o = level.add(type, gx, gy);
                 if (Defs.isTrigger(type)) o.y = Math.max(gy, 0);
                 selected = o;
+                addRecent(palIdx);
+                break;
+            }
+            case T_BRUSH: {
+                paintGX = Integer.MIN_VALUE;
+                dragUndoPushed = false;
+                paintAt(gx, gy);
+                addRecent(palIdx);
                 break;
             }
             case T_SELECT:
                 selected = hit;
-                if (hit != null) edToast(Defs.name(hit.type) + " · 길게 누르면 속성");
+                if (hit != null) edToast(Defs.name(hit.type) + " · 끌기: 이동 · 길게: 속성");
                 break;
             case T_DELETE:
                 if (hit != null) {
@@ -789,8 +915,8 @@ public class GameView extends View {
     }
 
     private void onLongPress() {
+        if (screen != S_EDIT || moved || painting || edButtonAt(downX, downY)) return;
         longFired = true;
-        if (screen != S_EDIT) return;
         int gx = (int) Math.floor(edWX(downX)), gy = (int) Math.floor(edWY(downY));
         Level.Obj hit = objAt(gx, gy);
         if (hit == null) hit = selected;
@@ -931,6 +1057,34 @@ public class GameView extends View {
             saveLevel();
             startLevel(level, false, true);
         }));
+        m.add(new MItem("여기서부터 테스트", "지금 화면 위치에서 시작", () -> {
+            saveLevel();
+            testStartX = Math.max(0, edCamX + 3f);
+            startLevel(level, false, true);
+        }));
+        m.add(new MItem("다시 실행", "실행 취소한 것을 되돌리기", () -> {
+            doRedo();
+            screen = S_EDIT;
+        }));
+        m.add(new MItem("보이는 구간 복사", "화면의 오브젝트를 오른쪽에 붙여넣기", () -> {
+            int x0 = (int) Math.floor(edCamX), x1 = (int) Math.ceil(edCamX + W / edScale());
+            ArrayList<Level.Obj> part = new ArrayList<>();
+            for (Level.Obj q : level.objs) if (q.x >= x0 && q.x < x1) part.add(q);
+            if (part.isEmpty()) {
+                edToast("화면에 오브젝트가 없어요");
+            } else {
+                pushUndo();
+                int shift = x1 - x0;
+                for (Level.Obj q : part) {
+                    Level.Obj c2 = q.copy();
+                    c2.x += shift;
+                    level.objs.add(c2);
+                }
+                edCamX += shift;
+                edToast(part.size() + "개 붙여넣기");
+            }
+            screen = S_EDIT;
+        }));
         m.add(new MItem("레벨 설정", "음악 · 시작 모드 · 속도 · 배경", this::openLevelSettings));
         m.add(new MItem("확대/축소", edZoom == 1 ? "지금: 보통" : "지금: 넓게", () -> {
             edZoom = edZoom == 1 ? 0.6f : 1f;
@@ -1058,15 +1212,19 @@ public class GameView extends View {
             }
             tick();
         } else if (screen == S_EDIT) {
-            if (tool == T_PLACE) {
+            if (tool == T_PLACE || tool == T_BRUSH) {
                 palIdx = Math.floorMod(palIdx + dir, Defs.PALETTE.length);
                 edToast(Defs.name(Defs.PALETTE[palIdx]));
             } else if (tool == T_SELECT && selected != null) {
                 pushUndo();
-                selected.x = Math.max(0, selected.x + dir);
-                float sx = (selected.x - edCamX) * edScale();
-                if (sx < W * 0.15f) edCamX -= 1;
-                if (sx > W * 0.85f) edCamX += 1;
+                if (edAxisY) {
+                    selected.y = Math.max(-6, Math.min(13, selected.y + dir));
+                } else {
+                    selected.x = Math.max(0, selected.x + dir);
+                    float sx = (selected.x - edCamX) * edScale();
+                    if (sx < W * 0.15f) edCamX -= 1;
+                    if (sx > W * 0.85f) edCamX += 1;
+                }
             } else {
                 edCamX += dir * 2;
             }
@@ -1119,7 +1277,26 @@ public class GameView extends View {
                 downTime = e.getEventTime();
                 moved = false;
                 longFired = false;
-                if (screen == S_EDIT) main.postDelayed(longPress, 550);
+                dragObj = false;
+                painting = false;
+                if (screen == S_EDIT) {
+                    main.postDelayed(longPress, 550);
+                    if (!edButtonAt(downX, downY)) {
+                        int gx = (int) Math.floor(edWX(downX)), gy = (int) Math.floor(edWY(downY));
+                        if (tool == T_SELECT && selected != null && objAt(gx, gy) == selected) {
+                            dragObj = true;
+                            dragUndoPushed = false;
+                            dragGX = gx;
+                            dragGY = gy;
+                            objGX = selected.x;
+                            objGY = selected.y;
+                        } else if (tool == T_BRUSH) {
+                            painting = true;
+                            dragUndoPushed = false;
+                            paintGX = Integer.MIN_VALUE;
+                        }
+                    }
+                }
                 return true;
             case MotionEvent.ACTION_MOVE: {
                 float dx = e.getX() - downX, dy = e.getY() - downY;
@@ -1127,7 +1304,20 @@ public class GameView extends View {
                     moved = true;
                     main.removeCallbacks(longPress);
                 }
-                if (moved && screen == S_EDIT) {
+                if (moved && screen == S_EDIT && dragObj) {
+                    int gx = (int) Math.floor(edWX(e.getX())), gy = (int) Math.floor(edWY(e.getY()));
+                    int nx = Math.max(0, objGX + gx - dragGX), ny = Math.max(-6, Math.min(13, objGY + gy - dragGY));
+                    if (nx != selected.x || ny != selected.y) {
+                        if (!dragUndoPushed) {
+                            pushUndo();
+                            dragUndoPushed = true;
+                        }
+                        selected.x = nx;
+                        selected.y = ny;
+                    }
+                } else if (moved && screen == S_EDIT && painting) {
+                    paintAt((int) Math.floor(edWX(e.getX())), (int) Math.floor(edWY(e.getY())));
+                } else if (moved && screen == S_EDIT) {
                     edCamX -= (e.getX() - lastX) / edScale();
                     edCamY += (e.getY() - lastY) / edScale();
                     edCamX = Math.max(-4, edCamX);
@@ -1883,33 +2073,72 @@ public class GameView extends View {
 
         // UI 버튼
         float br = W * 0.075f;
-        drawButton(c, cx, H * 0.1f, br * 1.25f, TOOL_NAMES[tool], tool == T_PLACE ? Color.rgb(120, 255, 140) : tool == T_SELECT ? Color.rgb(61, 232, 255) : Color.rgb(255, 90, 120));
+        int[] toolCols = {Color.rgb(120, 255, 140), Color.rgb(61, 232, 255), Color.rgb(255, 90, 120), Color.rgb(255, 170, 60)};
+        drawButton(c, cx, H * 0.1f, br * 1.25f, TOOL_NAMES[tool], toolCols[tool]);
         drawButton(c, W * 0.09f, cy, br, "↶", Color.rgb(200, 200, 220));
         drawButton(c, W * 0.91f, cy, br, "▶", Color.rgb(120, 255, 140));
         drawButton(c, cx, H * 0.91f, br, "≡", Color.rgb(255, 210, 63));
-        if (tool == T_PLACE) {
-            // 팔레트 미리보기
+        float sv0 = vx0, sv1 = vy0, sv2 = vs;
+        if (tool == T_PLACE || tool == T_BRUSH) {
+            // 팔레트: 지금 오브젝트 (탭하면 목록)
             int type = Defs.PALETTE[palIdx];
-            float px = cx, py = H * 0.22f;
-            p.setColor(Color.argb(170, 0, 0, 0));
+            float py = H * 0.21f;
+            p.setColor(Color.argb(190, 0, 0, 0));
             r.set(cx - W * 0.25f, py - W * 0.05f, cx + W * 0.25f, py + W * 0.05f);
             c.drawRoundRect(r, W * 0.05f, W * 0.05f, p);
-            text.setTextSize(W * 0.042f);
+            stroke.setColor(toolCols[tool]);
+            stroke.setStrokeWidth(W * 0.005f);
+            c.drawRoundRect(r, W * 0.05f, W * 0.05f, stroke);
+            drawObjIcon(c, type, cx - W * 0.18f, py, W * 0.07f, bgCol);
+            text.setTextSize(W * 0.04f);
             text.setColor(Color.WHITE);
-            c.drawText(Defs.name(type), px, py + W * 0.015f, text);
+            c.drawText(fit(Defs.name(type) + " ▾", W * 0.32f), cx + W * 0.035f, py + W * 0.014f, text);
+            // 최근 사용
+            for (int k = 0; k < 3; k++) {
+                if (recent[k] < 0) continue;
+                float rx = cx + (k - 1) * W * 0.16f, ry = H * 0.31f;
+                p.setColor(Color.argb(170, 0, 0, 0));
+                c.drawCircle(rx, ry, W * 0.045f, p);
+                if (recent[k] == palIdx) {
+                    stroke.setColor(toolCols[tool]);
+                    c.drawCircle(rx, ry, W * 0.045f, stroke);
+                }
+                drawObjIcon(c, Defs.PALETTE[recent[k]], rx, ry, W * 0.05f, bgCol);
+            }
         }
+        if (selected != null && tool != T_DELETE && tool != T_BRUSH && level.objs.contains(selected)) {
+            String[] labels = {"⟳", "⧉", edAxisY ? "↕" : "↔", "✕"};
+            int[] cols = {Color.rgb(61, 232, 255), Color.rgb(120, 255, 140), Color.rgb(255, 210, 63), Color.rgb(255, 90, 120)};
+            for (int k = 0; k < 4; k++) drawButton(c, cx - W * 0.255f + k * W * 0.17f, H * 0.7f, W * 0.055f, labels[k], cols[k]);
+            text.setTextSize(W * 0.032f);
+            text.setColor(Color.argb(200, 255, 255, 255));
+            c.drawText(Defs.name(selected.type) + " (" + selected.x + ", " + selected.y + ")" + (selected.group > 0 ? " G" + selected.group : ""), cx, H * 0.635f, text);
+        }
+        vx0 = sv0;
+        vy0 = sv1;
+        vs = sv2;
         if (edMsgT > 0) {
             text.setTextSize(W * 0.038f);
             text.setColor(alpha(Color.WHITE, (int) (255 * Math.min(1, edMsgT))));
             p.setColor(alpha(Color.BLACK, (int) (150 * Math.min(1, edMsgT))));
             float tw = text.measureText(edMsg) / 2 + W * 0.03f;
-            r.set(cx - tw, H * 0.74f, cx + tw, H * 0.8f);
+            r.set(cx - tw, H * 0.4f, cx + tw, H * 0.46f);
             c.drawRoundRect(r, W * 0.03f, W * 0.03f, p);
-            c.drawText(edMsg, cx, H * 0.785f, text);
+            c.drawText(edMsg, cx, H * 0.445f, text);
         }
         text.setTextSize(W * 0.032f);
         text.setColor(Color.argb(160, 255, 255, 255));
         c.drawText(level.objs.size() + "개 · X " + Math.round(edCamX + 4), cx, H * 0.83f, text);
+    }
+
+    /** 오브젝트 아이콘을 화면 위치 (x, y) 에 size 크기로 그린다. */
+    private void drawObjIcon(Canvas c, int type, float x, float y, float size, int bgCol) {
+        Level.Obj o = new Level.Obj(type, 0, 0);
+        float h = Defs.height(type);
+        vs = size / Math.max(1f, h * 0.8f);
+        vx0 = -(x - vs / 2) / vs;
+        vy0 = y + vs / 2;
+        drawObj(c, o, 0, 0, 0, 1f, true, bgCol);
     }
 
     private void drawButton(Canvas c, float x, float y, float rad, String label, int color) {
